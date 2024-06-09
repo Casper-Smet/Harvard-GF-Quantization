@@ -353,6 +353,7 @@ if __name__ == '__main__':
     model = nn.Sequential(model, ag_norm, final_layer)
     model = model.to(device)
 
+
     scaler = torch.cuda.amp.GradScaler()
 
     optimizer = AdamW(model.parameters(), lr=args.lr, betas=(0.0, 0.1), weight_decay=args.weight_decay)
