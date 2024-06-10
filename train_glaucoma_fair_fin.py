@@ -191,9 +191,12 @@ def train(model, criterion, optimizer, scaler, train_dataset_loader, epoch, tota
     return np.mean(loss_batch), acc, cur_auc, preds, gts, attrs, [preds_by_attr_tmp, gts_by_attr_tmp, aucs_by_attr], [acc, dpd, dpr, eod, eor]
     
 
-def validation(model, criterion, optimizer, validation_dataset_loader, epoch, result_dir=None, identity_Info=None):
-    global device
-
+def validation(model, criterion, optimizer, validation_dataset_loader, epoch, result_dir=None, identity_Info=None, _device=None):
+    if _device is None:
+        global device
+    else:
+        device = _device
+    print(device)
     model.eval()
     
     loss_batch = []
