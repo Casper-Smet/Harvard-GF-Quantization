@@ -62,6 +62,7 @@ parser.add_argument('--seed', default=-1, type=int,
 parser.add_argument('--start-epoch', default=0, type=int)
 
 parser.add_argument('--pretrained-weights', default='', type=str)
+parser.add_argument('--save_weights', default=1, type=int, help='store weights')
 
 parser.add_argument('--result_dir', default='./results', type=str)
 parser.add_argument('--data_dir', default='./results', type=str)
@@ -411,6 +412,7 @@ if __name__ == '__main__':
             best_auc_groups = auc_groups
             best_es_acc = es_acc
             best_es_auc = es_auc
+            
 
             state = {
             'epoch': epoch,# zero indexing
@@ -421,6 +423,8 @@ if __name__ == '__main__':
             'train_auc': train_auc,
             'test_auc': test_auc
             }
+            if args.save_weights:
+                torch.save(state, f"{args.result_dir}/best_weights.pth")
 
         print(f'---- best AUC {best_auc:.4f} at epoch {best_ep}')
         logger.log(f'---- best AUC {best_auc:.4f} at epoch {best_ep}')
@@ -470,7 +474,19 @@ if __name__ == '__main__':
                     auc_head_str = ', '.join([f'{x:.4f}' for x in auc_groups])
                     path_str = f'{args.result_dir}'
                     f.write(f'{best_ep}, {es_acc:.4f}, {best_acc:.4f}, {acc_head_str}, {es_auc:.4f}, {test_auc:.4f}, {auc_head_str}, {tst_other_metrics[1]:.4f}, {tst_other_metrics[2]:.4f}, {tst_other_metrics[3]:.4f}, {tst_other_metrics[4]:.4f}, {path_str}\n')
+    
+        if args.save_weights:
+            state = {
+            'epoch': epoch,# zero indexing
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict' : optimizer.state_dict(),
+            'scaler_state_dict' : scaler.state_dict(),
+            'scheduler_state_dict' : scheduler.state_dict(),
+            'train_auc': train_auc,
+            'test_auc': test_auc
+            }
 
+            torch.save(state, f"{args.result_dir}/last_weights.pth")
     if args.perf_file != '':
         if os.path.exists(best_global_perf_file):
             with open(best_global_perf_file, 'a') as f:
