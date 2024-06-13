@@ -16,6 +16,8 @@ from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, ExponentialLR,
 
 from sklearn.metrics import *
 
+from src.quant_efficientnet import quantifiable_efficientnet
+
 class AverageMeter(object):
     """Computes and stores the average and current value"""
     def __init__(self):
@@ -235,7 +237,7 @@ class Attribute_Grouped_Normalizer(nn.Module):
 
 def forward_model_with_fin(model, data, attr):
     feat = model[0](data)
-    if type(model[1]).__name__ != 'Fair_Identity_Normalizer':
+    if type(model[1]).__name__ not in ('Fair_Identity_Normalizer', 'Quantizable_FIN'):
         nml_feat = model[1](feat)
     else:
         nml_feat = model[1](feat, attr)
@@ -254,9 +256,12 @@ class Fair_Identity_Normalizer(nn.Module):
             self.sigmas = nn.Parameter(torch.ones(self.num_attr, self.dim)*sigma)
         self.eps = 1e-6
         self.momentum = momentum
+        self.v = False
 
 
     def forward(self, x, attr):
+        if self.v:
+            print(x)
         x_clone = x.clone()
         for idx in range(x.shape[0]):
             x[idx,:] = (x[idx,:] - self.mus[attr[idx], :])/( torch.log(1+torch.exp(self.sigmas[attr[idx], :])) + self.eps)
@@ -332,9 +337,12 @@ def create_model(model_type='efficientnet', in_dim=1, out_dim=1, use_pretrained=
             vf_predictor.heads[0] = nn.Linear(in_features=768, out_features=out_dim, bias=True)
         else:
             vf_predictor.heads[0] = nn.Identity()
+    elif model_type == 'quant':
+        return quantifiable_efficientnet(width_mult=1.0, depth_mult=1.1, weights=EfficientNet_B1_Weights.IMAGENET1K_V2)
 
     elif model_type == 'efficientnet':
         load_weights = None
+        # (model_type=model_type, in_dim=in_dim, out_dim=out_dim, include_final=False)
         if use_pretrained:
             load_weights = EfficientNet_B1_Weights.IMAGENET1K_V2
         vf_predictor = efficientnet_b1(weights=EfficientNet_B1_Weights.IMAGENET1K_V2)

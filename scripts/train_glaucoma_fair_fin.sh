@@ -1,6 +1,6 @@
 #!/bin/bash
 TASK=cls
-MODEL_TYPE='efficientnet'
+MODEL_TYPE='quant'
 LOSS_TYPE='bce' 
 LR=5e-5
 NUM_EPOCH=10

@@ -21,6 +21,7 @@ from src.modules import *
 from src.data_handler import *
 from src import logger
 from src.class_balanced_loss import *
+from src.quant_efficientnet import quantifiable_efficientnet
 from typing import NamedTuple
 
 from fairlearn.metrics import *
