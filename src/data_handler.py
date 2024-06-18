@@ -10,6 +10,7 @@ import numpy as np
 # from datetime import datetime
 # import scipy.stats as stats
 from skimage.transform import resize
+from sklearn.preprocessing import RobustScaler
 
 import torch
 from torch.utils.data import DataLoader, Dataset
@@ -68,8 +69,11 @@ def get_all_pids_filter(data_dir, keep_list=None):
     return pids, dict_pid_fid, files
 
 class EyeFair(Dataset):
+    scl2 = RobustScaler()
+    scl2.center_ =  56.69587 # Based on trainset, calculated in data_analysis.ipynb
+    scl2.scale_ = 43.01066 # Based on trainset, calculated in data_analysis.ipynb
     def __init__(self, data_path='./data/', split_file='', subset='train', modality_type='rnflt', task='md', resolution=224, need_shift=True, stretch=1.0,
-                    depth=1, indices=None, attribute_type='race', transform=None):
+                    depth=1, indices=None, attribute_type='race', transform=None, normalise_data=False):
 
         self.data_path = data_path
         self.modality_type = modality_type
@@ -105,6 +109,7 @@ class EyeFair(Dataset):
         self.resolution = resolution
         self.need_shift = need_shift
         self.stretch = stretch
+        self.normalize_data = normalise_data
 
     def __len__(self):
         return self.dataset_len
@@ -119,6 +124,8 @@ class EyeFair(Dataset):
             rnflt_sample = raw_data[self.modality_type]
             if rnflt_sample.shape[0] != self.resolution:
                 rnflt_sample = resize(rnflt_sample, (self.resolution, self.resolution))
+            if self.normalize_data:
+                rnflt_sample = self.scl2.transform(rnflt_sample.reshape(-1, 1)).reshape(self.resolution, self.resolution)
             rnflt_sample = rnflt_sample[np.newaxis, :, :]
             if self.depth>1:
                 rnflt_sample = np.repeat(rnflt_sample, self.depth, axis=0)

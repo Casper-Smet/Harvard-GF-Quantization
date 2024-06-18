@@ -68,6 +68,7 @@ parser.add_argument('--save_weights', default=1, type=int, help='store weights')
 parser.add_argument('--result_dir', default='./results', type=str)
 parser.add_argument('--data_dir', default='./results', type=str)
 parser.add_argument('--model_type', default='./results', type=str)
+parser.add_argument('--normalise_data', default=0, type=int)
 parser.add_argument('--task', default='cls', type=str, help='cls | md | tds')
 parser.add_argument('--image_size', default=224, type=int)
 parser.add_argument('--loss_type', default='bce', type=str)
@@ -99,8 +100,11 @@ def get_activation(name):
     return hook
 
 
-def train(model, criterion, optimizer, scaler, train_dataset_loader, epoch, total_iteration, identity_Info=None, time_window=-1):
-    global device
+def train(model, criterion, optimizer, scaler, train_dataset_loader, epoch, total_iteration, identity_Info=None, time_window=-1, _device=None):
+    if _device is None:
+        global device
+    else:
+        device = _device
 
     model.train()
     
@@ -117,38 +121,41 @@ def train(model, criterion, optimizer, scaler, train_dataset_loader, epoch, tota
     gts_by_attr = [ [] for _ in range(identity_Info.no_of_attr) ]
     t1 = time.time()
     for i, (input, target, attr) in enumerate(train_dataset_loader):
+        print(f"\r{i}", end='')
         optimizer.zero_grad()
 
-        with torch.cuda.amp.autocast():
-            input = input.to(device)
-            target = target.to(device)
-            attr = attr.to(device)
+        # with torch.cuda.amp.autocast():
+        input = input.to(device)
+        target = target.to(device)
+        attr = attr.to(device)
 
-            pred, feat = forward_model_with_fin(model, input, attr)
-            pred = pred.squeeze(1)
+        pred, feat = forward_model_with_fin(model, input, attr)
+        pred = pred.squeeze(1)
 
-            loss = criterion(pred, target)
-            
-            pred_prob = torch.sigmoid(pred.detach())
-            # pred_prob = F.softmax(pred.detach(), dim=1)
-            preds.append(pred_prob.detach().cpu().numpy())
-            gts.append(target.detach().cpu().numpy())
-            attrs.append(attr.detach().cpu().numpy())
-            # datadirs = datadirs + datadir
+        loss = criterion(pred, target)
+        
+        pred_prob = torch.sigmoid(pred.detach())
+        # pred_prob = F.softmax(pred.detach(), dim=1)
+        preds.append(pred_prob.detach().cpu().numpy())
+        gts.append(target.detach().cpu().numpy())
+        attrs.append(attr.detach().cpu().numpy())
+        # datadirs = datadirs + datadir
 
-            for j, x in enumerate(attr.detach().cpu().numpy()):
-                preds_by_attr[x].append(pred_prob[j])
-                gts_by_attr[x].append(target[j].item())
+        for j, x in enumerate(attr.detach().cpu().numpy()):
+            preds_by_attr[x].append(pred_prob[j])
+            gts_by_attr[x].append(target[j].item())
 
         loss_batch.append(loss.item())
         
         top1_accuracy = accuracy(pred.detach().cpu().numpy(), target.detach().cpu().numpy(), topk=(1,))
         
         top1_accuracy_batch.append(top1_accuracy)
+        loss.backward()
+        optimizer.step()
 
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+        # scaler.scale(loss).backward()
+        # scaler.step(optimizer)
+        # scaler.update()
 
         if time_window > 0 and (i % time_window == 0):
             logger.log(f'step {i} - {model[1]}')
@@ -289,8 +296,8 @@ if __name__ == '__main__':
     with open(os.path.join(args.result_dir, f'args_train.txt'), 'w') as f:
         json.dump(args.__dict__, f, indent=2)
 
-    trn_dataset = EyeFair(os.path.join(args.data_dir, 'train'), modality_type=args.modality_types, task=args.task, resolution=args.image_size, attribute_type=args.attribute_type)
-    tst_dataset = EyeFair(os.path.join(args.data_dir, 'test'), modality_type=args.modality_types, task=args.task, resolution=args.image_size, attribute_type=args.attribute_type)
+    trn_dataset = EyeFair(os.path.join(args.data_dir, 'train'), normalise_data=args.normalise_data, modality_type=args.modality_types, task=args.task, resolution=args.image_size, attribute_type=args.attribute_type, depth=3 if args.model_type == 'resnext' else 1)
+    tst_dataset = EyeFair(os.path.join(args.data_dir, 'test'), normalise_data=args.normalise_data, modality_type=args.modality_types, task=args.task, resolution=args.image_size, attribute_type=args.attribute_type, depth=3 if args.model_type == 'resnext' else 1)
 
     logger.log(f'trn patients {len(trn_dataset)} with {len(trn_dataset)} samples, val patients {len(tst_dataset)} with {len(tst_dataset)} samples')
     
@@ -359,7 +366,7 @@ if __name__ == '__main__':
     model = model.to(device)
 
 
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = None #torch.cuda.amp.GradScaler()
 
     optimizer = AdamW(model.parameters(), lr=args.lr, betas=(0.0, 0.1), weight_decay=args.weight_decay)
     
@@ -374,7 +381,7 @@ if __name__ == '__main__':
         start_epoch = checkpoint['epoch'] + 1
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        scaler.load_state_dict(checkpoint['scaler_state_dict'])
+        # scaler.load_state_dict(checkpoint['scaler_state_dict'])
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     
     total_iteration = len(trn_dataset)//args.batch_size
@@ -422,7 +429,7 @@ if __name__ == '__main__':
             'epoch': epoch,# zero indexing
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict' : optimizer.state_dict(),
-            'scaler_state_dict' : scaler.state_dict(),
+            # 'scaler_state_dict' : scaler.state_dict(),
             'scheduler_state_dict' : scheduler.state_dict(),
             'train_auc': train_auc,
             'test_auc': test_auc
@@ -484,7 +491,7 @@ if __name__ == '__main__':
             'epoch': epoch,# zero indexing
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict' : optimizer.state_dict(),
-            'scaler_state_dict' : scaler.state_dict(),
+            # 'scaler_state_dict' : scaler.state_dict(),
             'scheduler_state_dict' : scheduler.state_dict(),
             'train_auc': train_auc,
             'test_auc': test_auc

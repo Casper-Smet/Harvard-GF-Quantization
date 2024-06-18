@@ -10,6 +10,7 @@ import torch.distributed as dist
 from torch.nn.parallel.distributed import DistributedDataParallel as DDP
 
 from torchvision.models import *
+from torchvision.models.quantization import resnext101_64x4d # Overwrite resnext with a quantizable resnext
 import torch.nn.functional as F
 
 from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, ExponentialLR, StepLR
@@ -373,7 +374,7 @@ def create_model(model_type='efficientnet', in_dim=1, out_dim=1, use_pretrained=
     elif model_type == 'resnext':
         
         vf_predictor = resnext101_64x4d(weights=ResNeXt101_64X4D_Weights.IMAGENET1K_V1)
-        vf_predictor.fc = nn.Linear(in_features=2048, out_features=out_dim, bias=True)
+        vf_predictor.fc = nn.Linear(in_features=2048, out_features=out_dim if include_final else 1280, bias=True)
     elif model_type == 'wideresnet':
         vf_predictor = wide_resnet50_2(weights=Wide_ResNet50_2_Weights.IMAGENET1K_V2)
         vf_predictor.fc = nn.Linear(in_features=2048, out_features=out_dim, bias=True)
