@@ -77,36 +77,4 @@ def quantifiable_efficientnet(weights=None, progress=True, **kwargs):
     model.classifier[1] = nn.Identity()
     replace_activations(model)
     return model
-
-class Quantizable_FIN(nn.Module):
-    def __init__(self, num_attr=0, dim=0, mu=0.001, sigma=0.1, momentum=0, test=False):
-        super().__init__()
-        self.num_attr = num_attr
-        self.dim = dim
-
-        self.mus = nn.Parameter(torch.randn(self.num_attr, self.dim)*mu)
-        self.sigmas = nn.Parameter(torch.randn(self.num_attr, self.dim)*sigma)
-        if test:
-            self.sigmas = nn.Parameter(torch.ones(self.num_attr, self.dim)*sigma)
-        self.eps = 1e-6
-        self.momentum = momentum
-
-
-    def forward(self, x, attr):
-        x_clone = x.clone()
-        for idx in range(x.shape[0]):
-            x[idx,:] = (x[idx,:] - self.mus[attr[idx], :])/( torch.log(1+torch.exp(self.sigmas[attr[idx], :])) + self.eps)
-        x = (1-self.momentum)*x + self.momentum*x_clone
-
-        return x
-
-    def __repr__(self):
-        if self.mus is not None and self.sigmas is not None:
-            sigma = torch.log(1+torch.exp(self.sigmas))
-            sigma = torch.mean(sigma, dim=1)
-            mu = torch.mean(self.mus, dim=1)
-            out_str = ', '.join([f'G{i}: ({mu[i].item():f}, {sigma[i].item():f})' for i in range(mu.shape[0])])
-        else:
-            out_str = 'Attribute-Grouped Normalizer is not initialized yet.'
-        return out_str
 # qnet = quantifiable_efficientnet(width_mult=1.0, depth_mult=1.1).to('cuda:0')
