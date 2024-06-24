@@ -11,7 +11,7 @@ PERF_FILE=${MODEL_TYPE}_${MODALITY_TYPE}_${ATTRIBUTE_TYPE}.csv
 NORMALIZATION_TYPE=fin
 NORMALISE_DATA=0
 PERF_FILE=${MODEL_TYPE}_${NORMALIZATION_TYPE}_${MODALITY_TYPE}_${ATTRIBUTE_TYPE}.csv
-python train_glaucoma_fair_fin.py \
+python train_glaucoma_fair_fin_hf.py \
 	--data_dir ../quant_notes/data_cmpr/ \
 	--result_dir ./results/crosssectional_${MODALITY_TYPE}_${NORMALIZATION_TYPE}_${ATTRIBUTE_TYPE}_ablation_of_sigma/fullysup_${MODEL_TYPE}_${MODALITY_TYPE}_Task${TASK}_lr${LR}_bz${BATCH_SIZE}_normdata${NORMALISE_DATA} \
 	--model_type ${MODEL_TYPE} \

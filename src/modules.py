@@ -17,6 +17,8 @@ from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, ExponentialLR,
 
 from sklearn.metrics import *
 
+from transformers import PreTrainedModel, EfficientNetModel, AutoConfig
+
 from src.quant_efficientnet import quantifiable_efficientnet
 
 class AverageMeter(object):
@@ -236,14 +238,6 @@ class Attribute_Grouped_Normalizer(nn.Module):
             out_str = 'Attribute-Grouped Normalizer is not initialized yet.'
         return out_str
 
-def forward_model_with_fin(model, data, attr):
-    feat = model[0](data)
-    if type(model[1]).__name__ not in ('Fair_Identity_Normalizer', 'Quantizable_FIN'):
-        nml_feat = model[1](feat)
-    else:
-        nml_feat = model[1](feat, attr)
-    logit = model[2](nml_feat)
-    return logit, feat
 
 class Fair_Identity_Normalizer(nn.Module):
     def __init__(self, num_attr=0, dim=0, mu=0.001, sigma=0.1, momentum=0, test=False):
@@ -329,7 +323,57 @@ class LogisticRegression(torch.nn.Module):
          outputs = torch.sigmoid(self.linear(x))
          return outputs
 
-def create_model(model_type='efficientnet', in_dim=1, out_dim=1, use_pretrained=True, include_final=True):
+
+def forward_model_with_fin(model, data, attr):
+    logit = model(data, attr)
+    return logit
+
+
+class EfficientNetWrapper(PreTrainedModel):
+    def __init__(self, config):
+        super().__init__(config)
+        self.backbone = EfficientNetModel(config)
+
+        # Modify the first conv layer to accept the specified input channels
+        original_conv = self.backbone.embeddings.convolution
+        self.backbone.embeddings.convolution = nn.Conv2d(
+            config.in_dim,
+            32,  # Keep the output channels the same
+            kernel_size=(3, 3),
+            stride=(2, 2),
+            padding='valid',
+            bias=False
+        )
+
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.flatten = nn.Flatten()
+
+        if config.normalization_type == 'fin':
+            self.ag_norm = Fair_Identity_Normalizer(**config.ag_norm_params)
+        elif config.normalization_type == 'lb':
+            self.ag_norm = Learnable_BatchNorm1d(**config.ag_norm_params)
+        elif config.normalization_type == 'bnd':
+            self.ag_norm = nn.BatchNorm1d(**config.ag_norm_params)
+
+        # if config.include_final:
+        #     self.dropout = nn.Dropout(0.2)
+        #     self.fc = nn.Linear(self.backbone.config.hidden_size, config.num_labels)
+
+        self.final_layer = nn.Linear(config.in_feat_to_final, config.num_labels, bias=False)
+
+    def forward(self, x, attr=None):
+        outputs = self.backbone(x)
+        pooled = self.pool(outputs.last_hidden_state)
+        flattened = self.flatten(pooled)
+        if attr is not None and type(self.ag_norm).__name__ in ('Fair_Identity_Normalizer', 'Quantizable_FIN'):
+            normalized = self.ag_norm(flattened, attr)
+        else:
+            normalized = self.ag_norm(flattened)
+        final_output = self.final_layer(normalized)
+        return final_output
+
+
+def create_model(model_type='efficientnet', in_dim=1, out_dim=1, use_pretrained=True, include_final=True, extra_info=None):
     vf_predictor = None
     if model_type == 'vit':
         vf_predictor = vit_b_16(weights=ViT_B_16_Weights.IMAGENET1K_V1)
@@ -342,18 +386,15 @@ def create_model(model_type='efficientnet', in_dim=1, out_dim=1, use_pretrained=
         return quantifiable_efficientnet(width_mult=1.0, depth_mult=1.1, weights=EfficientNet_B1_Weights.IMAGENET1K_V2)
 
     elif model_type == 'efficientnet':
-        load_weights = None
-        # (model_type=model_type, in_dim=in_dim, out_dim=out_dim, include_final=False)
-        if use_pretrained:
-            load_weights = EfficientNet_B1_Weights.IMAGENET1K_V2
-        vf_predictor = efficientnet_b1(weights=EfficientNet_B1_Weights.IMAGENET1K_V2)
-        if in_dim != 3:
-            vf_predictor.features[0][0] = nn.Conv2d(in_dim, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
-        if include_final:
-            vf_predictor.classifier[1] = nn.Linear(in_features=1280, out_features=out_dim, bias=False)
-        else:
-            vf_predictor.classifier[1] = nn.Identity()
-        
+        config = AutoConfig.from_pretrained("google/efficientnet-b1")
+        config.in_dim = in_dim
+        config.num_labels = out_dim
+        # update config with extra info
+        if extra_info is not None:
+            for k, v in extra_info.items():
+                setattr(config, k, v)
+        vf_predictor = EfficientNetWrapper(config)
+
     elif model_type == 'efficientnet_v2':
         vf_predictor = efficientnet_v2_s(weights=EfficientNet_V2_S_Weights.IMAGENET1K_V1)
         
@@ -434,11 +475,7 @@ class OphBackbone(nn.Module):
 
         encoders = []
         for i in range(self.in_dim):
-
-            cur_encoder = efficientnet_b1(weights=EfficientNet_B1_Weights.IMAGENET1K_V2)
-            cur_encoder.features[0][0] = nn.Conv2d(1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
-            cur_encoder.classifier[1] = nn.Linear(in_features=1280, out_features=1, bias=False)
-            
+            cur_encoder = create_model(model_type=model_type, in_dim=1, include_final=False)
             encoders.append(cur_encoder)
         self.encoders = nn.ModuleList(encoders)
 
