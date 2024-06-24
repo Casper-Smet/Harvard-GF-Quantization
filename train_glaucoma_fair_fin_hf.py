@@ -500,39 +500,8 @@ if __name__ == '__main__':
                     f.write(f'{best_ep}, {es_acc:.4f}, {best_acc:.4f}, {acc_head_str}, {es_auc:.4f}, {test_auc:.4f}, {auc_head_str}, {tst_other_metrics[1]:.4f}, {tst_other_metrics[2]:.4f}, {tst_other_metrics[3]:.4f}, {tst_other_metrics[4]:.4f}, {path_str}\n')
 
         if args.save_weights:
-            state = {
-            'epoch': epoch,# zero indexing
-            # 'model_state_dict': model.state_dict(),
-            # 'optimizer_state_dict' : optimizer.state_dict(),
-            # # 'scaler_state_dict' : scaler.state_dict(),
-            # 'scheduler_state_dict' : scheduler.state_dict(),
-            'train_auc': train_auc,
-            'test_auc': test_auc
-            }
-
-            #torch.save(state, f"{args.result_dir}/last_weights.pth")
             model.save_pretrained(os.path.join(args.result_dir, f"model_epoch_{epoch}"))
-            #
-            # tensor_state = {
-            #     'model_state_dict': model.state_dict(),
-            #     'optimizer_state_dict': optimizer.state_dict(),
-            #     'scheduler_state_dict': scheduler.state_dict()
-            # }
 
-            # Save tensor data using safetensors
-            # save_file(tensor_state, os.path.join(args.result_dir, f"model_epoch_{epoch}", 'tensor_state.safetensors'))
-
-            # Prepare the rest of the dictionary to save with pickle
-            # other_state = {
-            #     'epoch': epoch,
-            #     'train_auc': train_auc,
-            #     'test_auc': test_auc
-            # }
-            #
-            # # Save the rest of the dictionary using pickle
-            # with open('path/to/save/model/other_state.pkl', 'wb') as f:
-            #     pickle.dump(other_state, f)
-            # save_file(model.state_dict(), os.path.join(args.result_dir, f"model_epoch_{epoch}/model.safetensors"))
     if args.perf_file != '':
         if os.path.exists(best_global_perf_file):
             with open(best_global_perf_file, 'a') as f:
