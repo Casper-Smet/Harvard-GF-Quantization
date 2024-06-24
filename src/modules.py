@@ -332,7 +332,8 @@ def forward_model_with_fin(model, data, attr):
 class EfficientNetWrapper(PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
-        self.backbone = EfficientNetModel(config)
+        self.backbone = EfficientNetModel.from_pretrained("google/efficientnet-b1", config=config)
+        # self.backbone = EfficientNetModel(config)
 
         # Modify the first conv layer to accept the specified input channels
         original_conv = self.backbone.embeddings.convolution
@@ -385,6 +386,17 @@ def create_model(model_type='efficientnet', in_dim=1, out_dim=1, use_pretrained=
     elif model_type == 'quant':
         return quantifiable_efficientnet(width_mult=1.0, depth_mult=1.1, weights=EfficientNet_B1_Weights.IMAGENET1K_V2)
 
+    elif model_type == 'efficientnetv1':
+        load_weights = None
+        if use_pretrained:
+            load_weights = EfficientNet_B1_Weights.IMAGENET1K_V1
+        vf_predictor = efficientnet_b1(weights=EfficientNet_B1_Weights.IMAGENET1K_V2)
+        if in_dim != 3:
+            vf_predictor.features[0][0] = nn.Conv2d(in_dim, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+        if include_final:
+            vf_predictor.classifier[1] = nn.Linear(in_features=1280, out_features=out_dim, bias=False)
+        else:
+            vf_predictor.classifier[1] = nn.Identity()
     elif model_type == 'efficientnet':
         config = AutoConfig.from_pretrained("google/efficientnet-b1")
         config.in_dim = in_dim
